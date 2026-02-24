@@ -1,14 +1,19 @@
 import type { Config } from 'tailwindcss';
 
 export default {
+  darkMode: 'class',
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        ink: '#171717',
-        paper: '#f8f6f2',
-        brand: '#006d77',
-        accent: '#e29578'
+        ink: 'var(--color-ink)',
+        paper: 'var(--color-paper)',
+        brand: 'var(--color-brand)',
+        accent: 'var(--color-accent)',
+        muted: 'var(--color-muted)',
+        border: 'var(--color-border)',
+        panel: 'var(--color-panel)',
+        panelSoft: 'var(--color-panel-soft)'
       }
     }
   },
