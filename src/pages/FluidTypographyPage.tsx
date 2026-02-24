@@ -121,24 +121,60 @@ function getFontSizeAtViewport(data: ValidFormData, viewport: number): number {
   return data.minFontPx + (data.maxFontPx - data.minFontPx) * ratio;
 }
 
-function getScanOpacity(t: number): number {
+function getScanOpacity(progress: number): number {
   const fadeInEnd = 0.12;
   const fadeOutStart = 0.9;
   const fadeOutEnd = 0.98;
 
-  if (t < fadeInEnd) {
-    return t / fadeInEnd;
+  if (progress < fadeInEnd) {
+    return progress / fadeInEnd;
   }
 
-  if (t < fadeOutStart) {
+  if (progress < fadeOutStart) {
     return 1;
   }
 
-  if (t < fadeOutEnd) {
-    return (fadeOutEnd - t) / (fadeOutEnd - fadeOutStart);
+  if (progress < fadeOutEnd) {
+    return (fadeOutEnd - progress) / (fadeOutEnd - fadeOutStart);
   }
 
   return 0;
+}
+
+function getTypedSlice(fullText: string, elapsedSec: number, lineStartSec: number, charsPerSec: number): string {
+  const progress = (elapsedSec - lineStartSec) * charsPerSec;
+  if (progress <= 0) {
+    return '';
+  }
+  return fullText.slice(0, Math.min(fullText.length, Math.floor(progress)));
+}
+
+let textMeasureContext: CanvasRenderingContext2D | null = null;
+
+function measureTerminalTextWidth(text: string, fontSizePx: number): number {
+  if (typeof document === 'undefined') {
+    return text.length * fontSizePx * 0.62;
+  }
+
+  if (!textMeasureContext) {
+    const canvas = document.createElement('canvas');
+    textMeasureContext = canvas.getContext('2d');
+  }
+
+  if (!textMeasureContext) {
+    return text.length * fontSizePx * 0.62;
+  }
+
+  textMeasureContext.font = `${fontSizePx}px "IBM Plex Mono", "JetBrains Mono", "SFMono-Regular", Menlo, monospace`;
+  return textMeasureContext.measureText(text).width;
+}
+
+function easeOutCubic(t: number): number {
+  return 1 - (1 - t) ** 3;
+}
+
+function easeInCubic(t: number): number {
+  return t ** 3;
 }
 
 function calculateClampCss(data: ValidFormData): string {
@@ -671,12 +707,10 @@ function FullscreenTypographyBackdrop({ presets }: FullscreenTypographyBackdropP
 
   const width = Math.max(360, screenSize.width);
   const height = Math.max(520, screenSize.height);
-  const hasSidePanel = width >= 1120;
+  const hasWideLayout = width >= 1120;
   const panelScale = width >= 1500 ? 1 : width >= 1200 ? 0.88 : 0.74;
-  const panelWidth = 596 * panelScale;
+  const panelWidth = 612 * panelScale;
   const panelHeight = 314 * panelScale;
-  const panelX = hasSidePanel ? width - panelWidth - 28 : 20;
-  const panelY = hasSidePanel ? 74 : height - panelHeight - 22;
 
   const plotLeft = width < 760 ? 58 : 84;
   const plotRight = width - 36;
@@ -718,8 +752,10 @@ function FullscreenTypographyBackdrop({ presets }: FullscreenTypographyBackdropP
     const minY = mapY(minFont);
     const maxY = mapY(maxFont);
     const rightY = mapY(getFontSizeAtViewport(preset.data, viewportAxisMax));
-    const randomOffset = seededRandom(`${preset.id}-offset`);
-    const travelSpeed = 0.03 + seededRandom(`${preset.id}-speed`) * 0.04;
+    const speedSeed = seededRandom(`${preset.id}-speed`);
+    const cycleDuration = 9.2 + speedSeed * 4.6;
+    const phaseOffset = seededRandom(`${preset.id}-phase`) * cycleDuration;
+    const activeDuration = cycleDuration * (0.82 + seededRandom(`${preset.id}-active`) * 0.08);
 
     return {
       id: preset.id,
@@ -727,14 +763,125 @@ function FullscreenTypographyBackdrop({ presets }: FullscreenTypographyBackdropP
       color: linePalette[index % linePalette.length],
       primary: `M ${leftX} ${leftY} L ${minX} ${minY} L ${maxX} ${maxY} L ${rightX} ${rightY}`,
       secondary: `M ${leftX} ${plotArea.bottom} L ${rightX} ${plotArea.bottom}`,
-      randomOffset,
-      travelSpeed,
+      phaseOffset,
+      cycleDuration,
+      activeDuration,
       minFont,
       maxFont,
       minViewport,
       maxViewport
     };
   });
+
+  const terminalLines = [
+    `olein@metrics:~$ scan --presets ${presets.length} --mode spectral`,
+    '[ok] data stream online',
+    ...curves.slice(0, 5).map(
+      (curve) => `> ${curve.label.toLowerCase()} :: ${formatDecimal(curve.minFont)}-${formatDecimal(curve.maxFont)}px @ ${formatDecimal(curve.minViewport)}-${formatDecimal(curve.maxViewport)}px`
+    ),
+    `olein@metrics:~$ render --graph-lines ${curves.length}`
+  ];
+  const terminalLineY = [60, 88, 122, 152, 182, 212, 242, 286];
+  const charsPerSec = 28;
+  const lineGapSec = 0.4;
+  const lineStartTimes = terminalLines.reduce<number[]>((acc, line, index) => {
+    if (index === 0) {
+      acc.push(0);
+      return acc;
+    }
+    const prevStart = acc[index - 1];
+    const prevLine = terminalLines[index - 1];
+    acc.push(prevStart + prevLine.length / charsPerSec + lineGapSec);
+    return acc;
+  }, []);
+  const lineDurations = terminalLines.map((line) => line.length / charsPerSec);
+  const terminalTypingDuration = lineStartTimes[lineStartTimes.length - 1] + terminalLines[terminalLines.length - 1].length / charsPerSec;
+  const terminalIntroDuration = 0.36;
+  const terminalHoldDuration = 1.05;
+  const terminalOutroDuration = 0.32;
+  const terminalPauseDuration = 0.18;
+  const terminalCycleDuration = terminalIntroDuration + terminalTypingDuration + terminalHoldDuration + terminalOutroDuration + terminalPauseDuration;
+  const terminalCycleIndex = Math.floor(scanTime / terminalCycleDuration);
+  const terminalCycleSec = scanTime % terminalCycleDuration;
+  const isTypingPhase = terminalCycleSec >= terminalIntroDuration && terminalCycleSec < terminalIntroDuration + terminalTypingDuration;
+  const typingElapsed = isTypingPhase ? terminalCycleSec - terminalIntroDuration : terminalCycleSec < terminalIntroDuration ? 0 : terminalTypingDuration;
+  const isHoldPhase =
+    terminalCycleSec >= terminalIntroDuration + terminalTypingDuration &&
+    terminalCycleSec < terminalIntroDuration + terminalTypingDuration + terminalHoldDuration;
+  const terminalTransform = (() => {
+    if (terminalCycleSec < terminalIntroDuration) {
+      const t = terminalCycleSec / terminalIntroDuration;
+      const split = 0.68;
+      if (t < split) {
+        const xProgress = t / split;
+        return {
+          scaleX: 0.04 + 0.96 * easeOutCubic(xProgress),
+          scaleY: 0.02
+        };
+      }
+      const yProgress = (t - split) / (1 - split);
+      return {
+        scaleX: 1,
+        scaleY: 0.02 + 0.98 * easeOutCubic(yProgress)
+      };
+    }
+
+    if (terminalCycleSec < terminalIntroDuration + terminalTypingDuration) {
+      return { scaleX: 1, scaleY: 1 };
+    }
+
+    if (terminalCycleSec < terminalIntroDuration + terminalTypingDuration + terminalHoldDuration) {
+      return { scaleX: 1, scaleY: 1 };
+    }
+
+    if (terminalCycleSec < terminalIntroDuration + terminalTypingDuration + terminalHoldDuration + terminalOutroDuration) {
+      const t = (terminalCycleSec - terminalIntroDuration - terminalTypingDuration - terminalHoldDuration) / terminalOutroDuration;
+      const split = 0.45;
+      if (t < split) {
+        const yProgress = t / split;
+        return {
+          scaleX: 1,
+          scaleY: 1 - 0.98 * easeInCubic(yProgress)
+        };
+      }
+      const xProgress = (t - split) / (1 - split);
+      return {
+        scaleX: 1 - 0.98 * easeInCubic(xProgress),
+        scaleY: 0.02
+      };
+    }
+
+    return { scaleX: 0.04, scaleY: 0.02 };
+  })();
+  const terminalVisible = terminalCycleSec < terminalIntroDuration + terminalTypingDuration + terminalHoldDuration + terminalOutroDuration;
+  const panelAnchorPositions = hasWideLayout
+    ? [
+        { x: Math.max(20, width * 0.56), y: 28 },
+        { x: Math.max(20, width - panelWidth - 28), y: 86 },
+        { x: Math.max(20, width * 0.52), y: Math.max(28, Math.min(height - panelHeight - 32, height * 0.2)) }
+      ]
+    : [
+        { x: 20, y: 20 },
+        { x: Math.max(20, width - panelWidth - 20), y: Math.max(20, height * 0.18) },
+        { x: 20, y: Math.max(20, height - panelHeight - 24) }
+      ];
+  const panelAnchor = panelAnchorPositions[terminalCycleIndex % panelAnchorPositions.length];
+  const panelX = panelAnchor.x;
+  const panelY = panelAnchor.y;
+  const typedTerminalLines = terminalLines.map((line, index) => getTypedSlice(line, typingElapsed, lineStartTimes[index], charsPerSec));
+  const activeLineIndex = (() => {
+    for (let i = 0; i < terminalLines.length; i += 1) {
+      if (typingElapsed >= lineStartTimes[i] && typingElapsed < lineStartTimes[i] + lineDurations[i]) {
+        return i;
+      }
+    }
+    return -1;
+  })();
+  const cursorLineIndex = activeLineIndex === -1 ? terminalLines.length - 1 : activeLineIndex;
+  const cursorLineY = terminalLineY[cursorLineIndex] ?? 286;
+  const cursorFontSize = cursorLineIndex === 0 ? 17 : cursorLineIndex === terminalLines.length - 1 ? 16 : 15;
+  const cursorX = 16 + measureTerminalTextWidth(typedTerminalLines[cursorLineIndex] ?? '', cursorFontSize);
+  const showCursor = (isTypingPhase || isHoldPhase) && activeLineIndex !== -1;
 
   return (
     <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
@@ -847,8 +994,22 @@ function FullscreenTypographyBackdrop({ presets }: FullscreenTypographyBackdropP
         </g>
 
         {curves.map((curve, index) => {
-          const t = (curve.randomOffset + scanTime * curve.travelSpeed) % 1;
-          const opacity = getScanOpacity(t);
+          const elapsed = scanTime + curve.phaseOffset;
+          const cycleProgressSec = elapsed % curve.cycleDuration;
+          const startT = 0;
+          const endT = 1;
+
+          if (cycleProgressSec > curve.activeDuration) {
+            return null;
+          }
+
+          const moveProgress = cycleProgressSec / curve.activeDuration;
+          const t = startT + (endT - startT) * moveProgress;
+          const opacity = getScanOpacity(moveProgress);
+          if (opacity <= 0.001) {
+            return null;
+          }
+
           const currentViewport = viewportAxisMin + (viewportAxisMax - viewportAxisMin) * t;
           const currentFont = getFontSizeAtViewport(
             {
@@ -911,71 +1072,76 @@ function FullscreenTypographyBackdrop({ presets }: FullscreenTypographyBackdropP
           );
         })}
 
-        <g transform={`translate(${panelX} ${panelY}) scale(${panelScale})`} className="type-terminal-float">
-          <ellipse cx="298" cy="136" rx="340" ry="178" fill="rgb(6 14 24 / 0.64)" />
-          <ellipse cx="298" cy="136" rx="304" ry="146" fill="rgb(9 20 34 / 0.52)" className="type-terminal-ghost" />
-          <text
-            x="16"
-            y="26"
-            fill="rgb(146 211 243 / 0.42)"
-            fontSize="15"
-            letterSpacing="2.2"
-            filter="url(#hero-neon)"
-            className="type-terminal-title"
-            style={{ fontFamily: "'IBM Plex Mono', 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace" }}
+        <g transform={`translate(${panelX} ${panelY}) scale(${panelScale})`}>
+          <g
+            transform={`translate(306 157) scale(${terminalTransform.scaleX} ${terminalTransform.scaleY}) translate(-306 -157)`}
+            style={{ opacity: terminalVisible ? 1 : 0 }}
           >
-            TYPO METRICS FIELD
-          </text>
-
-          <text
-            x="16"
-            y="60"
-            fill="rgb(132 208 246 / 0.66)"
-            fontSize="17"
-            filter="url(#hero-neon)"
-            className="type-terminal-line"
-            style={{ fontFamily: "'IBM Plex Mono', 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace" }}
-          >
-            {`olein@metrics:~$ scan --presets ${presets.length} --mode spectral`}
-          </text>
-
-          <text
-            x="16"
-            y="88"
-            fill="rgb(158 224 255 / 0.5)"
-            fontSize="15"
-            className="type-terminal-line"
-            style={{ fontFamily: "'IBM Plex Mono', 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace" }}
-          >
-            {'[ok] data stream online'}
-          </text>
-
-          {curves.slice(0, 5).map((curve, index) => (
+            <rect x="0" y="0" width="612" height="314" rx="2" fill="rgb(6 16 28 / 0.44)" stroke="rgb(142 201 234 / 0.26)" strokeWidth="1.2" />
+            <rect x="0" y="0" width="612" height="314" rx="2" fill="url(#hero-grid)" opacity="0.16" />
             <text
-              key={`${curve.id}-label`}
               x="16"
-              y={122 + index * 30}
-              fill="rgb(187 230 252 / 0.54)"
+              y="26"
+              fill="rgb(146 211 243 / 0.42)"
+              fontSize="15"
+              letterSpacing="2.2"
+              filter="url(#hero-neon)"
+              className="type-terminal-title"
+              style={{ fontFamily: "'IBM Plex Mono', 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace" }}
+            >
+              TYPO METRICS FIELD
+            </text>
+
+            <text
+              x="16"
+              y="60"
+              fill="rgb(132 208 246 / 0.66)"
+              fontSize="17"
+              filter="url(#hero-neon)"
+              className="type-terminal-line"
+              style={{ fontFamily: "'IBM Plex Mono', 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace" }}
+            >
+              {typedTerminalLines[0]}
+            </text>
+
+            <text
+              x="16"
+              y="88"
+              fill="rgb(158 224 255 / 0.5)"
               fontSize="15"
               className="type-terminal-line"
               style={{ fontFamily: "'IBM Plex Mono', 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace" }}
             >
-              {`> ${curve.label.toLowerCase()} :: ${formatDecimal(curve.minFont)}-${formatDecimal(curve.maxFont)}px @ ${formatDecimal(curve.minViewport)}-${formatDecimal(curve.maxViewport)}px`}
+              {typedTerminalLines[1]}
             </text>
-          ))}
 
-          <text
-            x="16"
-            y="286"
-            fill="rgb(132 208 246 / 0.62)"
-            fontSize="16"
-            filter="url(#hero-neon)"
-            className="type-terminal-line"
-            style={{ fontFamily: "'IBM Plex Mono', 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace" }}
-          >
-            {`olein@metrics:~$ render --graph-lines ${curves.length}`}
-          </text>
-          <rect x="442" y="272" width="11" height="16" rx="1" fill="rgb(150 221 255 / 0.72)" className="type-terminal-cursor" />
+            {typedTerminalLines.slice(2, 7).map((line, index) => (
+              <text
+                key={`terminal-line-${index}`}
+                x="16"
+                y={122 + index * 30}
+                fill="rgb(187 230 252 / 0.54)"
+                fontSize="15"
+                className="type-terminal-line"
+                style={{ fontFamily: "'IBM Plex Mono', 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace" }}
+              >
+                {line}
+              </text>
+            ))}
+
+            <text
+              x="16"
+              y="286"
+              fill="rgb(132 208 246 / 0.62)"
+              fontSize="16"
+              filter="url(#hero-neon)"
+              className="type-terminal-line"
+              style={{ fontFamily: "'IBM Plex Mono', 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace" }}
+            >
+              {typedTerminalLines[7] ?? ''}
+            </text>
+            {showCursor && <rect x={cursorX} y={cursorLineY - 13} width="10" height="15" rx="1" fill="rgb(150 221 255 / 0.72)" className="type-terminal-cursor" />}
+          </g>
         </g>
       </svg>
     </div>

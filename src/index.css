@@ -123,18 +123,6 @@ body::after {
   }
 }
 
-@keyframes typeTerminalFloat {
-  0% {
-    transform: translate3d(0, -4px, 0);
-  }
-  50% {
-    transform: translate3d(0, 4px, 0);
-  }
-  100% {
-    transform: translate3d(0, -4px, 0);
-  }
-}
-
 @keyframes typeTerminalLineGlow {
   0%,
   100% {
@@ -183,10 +171,6 @@ body::after {
 
 .type-terminal-cursor {
   animation: typeTerminalBlink 1s steps(1, end) infinite;
-}
-
-.type-terminal-float {
-  animation: typeTerminalFloat 8s ease-in-out infinite;
 }
 
 .type-terminal-title {
