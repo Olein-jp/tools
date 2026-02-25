@@ -5,6 +5,8 @@ import { z } from 'zod';
 
 const STORAGE_KEY = 'olein-tools:fluid-typography:v2';
 const DEFAULT_VAR_SLUG = 'fluid-type';
+const DEFAULT_SUFFIX_FORMAT: SuffixFormat = 'plain';
+const RADAR_SPEED_FACTOR = 1.6;
 
 const FALLBACK_FORM: FormState = {
   minFontPx: '16',
@@ -31,6 +33,8 @@ type ValidPreset = {
   label: string;
   data: ValidFormData;
 };
+
+type SuffixFormat = 'plain' | 'zero-padded';
 
 type FieldErrors = Partial<Record<keyof FormState, string>>;
 
@@ -167,14 +171,6 @@ function measureTerminalTextWidth(text: string, fontSizePx: number): number {
 
   textMeasureContext.font = `${fontSizePx}px "IBM Plex Mono", "JetBrains Mono", "SFMono-Regular", Menlo, monospace`;
   return textMeasureContext.measureText(text).width;
-}
-
-function easeOutCubic(t: number): number {
-  return 1 - (1 - t) ** 3;
-}
-
-function easeInCubic(t: number): number {
-  return t ** 3;
 }
 
 function calculateClampCss(data: ValidFormData): string {
@@ -344,10 +340,35 @@ function readInitialVarSlug(): string {
   }
 }
 
-function buildCssOutput(validPresets: ValidPreset[], varSlug: string): string {
+function readInitialSuffixFormat(): SuffixFormat {
+  if (typeof window === 'undefined') {
+    return DEFAULT_SUFFIX_FORMAT;
+  }
+
+  const raw = window.localStorage.getItem(STORAGE_KEY);
+  if (!raw) {
+    return DEFAULT_SUFFIX_FORMAT;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as { suffixFormat?: unknown };
+    return parsed.suffixFormat === 'zero-padded' || parsed.suffixFormat === 'plain'
+      ? parsed.suffixFormat
+      : DEFAULT_SUFFIX_FORMAT;
+  } catch {
+    return DEFAULT_SUFFIX_FORMAT;
+  }
+}
+
+function formatVariableSuffix(index: number, suffixFormat: SuffixFormat): string {
+  const value = index + 1;
+  return suffixFormat === 'zero-padded' ? String(value).padStart(2, '0') : String(value);
+}
+
+function buildCssOutput(validPresets: ValidPreset[], varSlug: string, suffixFormat: SuffixFormat): string {
   return validPresets
     .map((preset, index) => {
-      const varName = `--${varSlug}-${index + 1}`;
+      const varName = `--${varSlug}-${formatVariableSuffix(index, suffixFormat)}`;
       return `/* ${preset.label} */\n${varName}: ${calculateClampCss(preset.data)};`;
     })
     .join('\n\n');
@@ -356,6 +377,7 @@ function buildCssOutput(validPresets: ValidPreset[], varSlug: string): string {
 export function FluidTypographyPage() {
   const [presets, setPresets] = useState<TypographyPreset[]>(() => readInitialPresets());
   const [varSlugInput, setVarSlugInput] = useState<string>(() => readInitialVarSlug());
+  const [suffixFormat, setSuffixFormat] = useState<SuffixFormat>(() => readInitialSuffixFormat());
   const [copyState, setCopyState] = useState<'idle' | 'done' | 'error'>('idle');
   const resolvedVarSlug = useMemo(() => resolveVarSlug(varSlugInput), [varSlugInput]);
 
@@ -388,7 +410,7 @@ export function FluidTypographyPage() {
   }, [validations]);
 
   const canGenerate = presets.length > 0 && validations.every((item) => item.ok);
-  const cssOutput = canGenerate ? buildCssOutput(validPresets, resolvedVarSlug) : '';
+  const cssOutput = canGenerate ? buildCssOutput(validPresets, resolvedVarSlug, suffixFormat) : '';
 
   const accessibilityWarningsByPresetId = useMemo(() => {
     const map: Record<string, string[]> = {};
@@ -403,14 +425,23 @@ export function FluidTypographyPage() {
 
   const persistPresets = (nextPresets: TypographyPreset[]) => {
     setPresets(nextPresets);
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ presets: nextPresets, varSlug: varSlugInput }));
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ presets: nextPresets, varSlug: varSlugInput, suffixFormat })
+    );
     setCopyState('idle');
   };
 
   const onVarSlugChange = (value: string) => {
     const nextSlugInput = sanitizeVarSlugInput(value);
     setVarSlugInput(nextSlugInput);
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ presets, varSlug: nextSlugInput }));
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ presets, varSlug: nextSlugInput, suffixFormat }));
+    setCopyState('idle');
+  };
+
+  const onSuffixFormatChange = (value: SuffixFormat) => {
+    setSuffixFormat(value);
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ presets, varSlug: varSlugInput, suffixFormat: value }));
     setCopyState('idle');
   };
 
@@ -462,7 +493,7 @@ export function FluidTypographyPage() {
     <main className="relative">
       <FullscreenTypographyBackdrop presets={validPresets} />
 
-      <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 pb-8 pt-24 sm:px-6 sm:pb-12 sm:pt-28">
+      <div className="relative z-20 mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 pb-8 pt-24 sm:px-6 sm:pb-12 sm:pt-28">
         <header className="space-y-3">
           <Link to="/" className="inline-block text-sm font-semibold text-accent hover:underline">
             ← Back to tools
@@ -476,15 +507,44 @@ export function FluidTypographyPage() {
         <section className="space-y-6">
           <form className="fluid-input-shell p-5 sm:p-6">
             <div className="mb-4 flex items-center justify-between gap-3">
-              <label className="block min-w-0">
-                <span className="fluid-input-label mb-1 block text-sm font-semibold">Variable Slug</span>
-                <input
-                  value={varSlugInput}
-                  onChange={(event) => onVarSlugChange(event.target.value)}
-                  className="fluid-input-control w-52 border px-3 py-2 text-base outline-none transition sm:w-64"
-                  placeholder={DEFAULT_VAR_SLUG}
-                />
-              </label>
+              <div className="flex min-w-0 items-end gap-3">
+                <label className="block min-w-0">
+                  <span className="fluid-input-label mb-1 block text-sm font-semibold">Variable Slug</span>
+                  <input
+                    value={varSlugInput}
+                    onChange={(event) => onVarSlugChange(event.target.value)}
+                    className="fluid-input-control w-60 border px-3 py-2 text-base outline-none transition sm:w-72"
+                    placeholder={DEFAULT_VAR_SLUG}
+                  />
+                </label>
+                <fieldset className="block">
+                  <legend className="fluid-input-label mb-1 block text-sm font-semibold">Suffix</legend>
+                  <div className="fluid-radio-group fluid-input-control flex items-center gap-2 border px-2 py-1.5 text-sm">
+                    <label className="fluid-radio-option inline-flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="suffix-format"
+                        value="plain"
+                        checked={suffixFormat === 'plain'}
+                        onChange={() => onSuffixFormatChange('plain')}
+                        className="fluid-radio-input"
+                      />
+                      <span>1</span>
+                    </label>
+                    <label className="fluid-radio-option inline-flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="suffix-format"
+                        value="zero-padded"
+                        checked={suffixFormat === 'zero-padded'}
+                        onChange={() => onSuffixFormatChange('zero-padded')}
+                        className="fluid-radio-input"
+                      />
+                      <span>01</span>
+                    </label>
+                  </div>
+                </fieldset>
+              </div>
               <button
                 type="button"
                 onClick={addPreset}
@@ -541,7 +601,7 @@ export function FluidTypographyPage() {
                       />
                     </div>
 
-                    <p className="mt-3 text-xs text-muted">{`Output variable: --${resolvedVarSlug}-${index + 1}`}</p>
+                    <p className="mt-3 text-xs text-muted">{`Output variable: --${resolvedVarSlug}-${formatVariableSuffix(index, suffixFormat)}`}</p>
                     {warnings.length > 0 && (
                       <ul className="mt-3 space-y-2">
                         {warnings.map((warning) => (
@@ -707,10 +767,6 @@ function FullscreenTypographyBackdrop({ presets }: FullscreenTypographyBackdropP
 
   const width = Math.max(360, screenSize.width);
   const height = Math.max(520, screenSize.height);
-  const hasWideLayout = width >= 1120;
-  const panelScale = width >= 1500 ? 1 : width >= 1200 ? 0.88 : 0.74;
-  const panelWidth = 612 * panelScale;
-  const panelHeight = 314 * panelScale;
 
   const plotLeft = width < 760 ? 58 : 84;
   const plotRight = width - 36;
@@ -753,7 +809,7 @@ function FullscreenTypographyBackdrop({ presets }: FullscreenTypographyBackdropP
     const maxY = mapY(maxFont);
     const rightY = mapY(getFontSizeAtViewport(preset.data, viewportAxisMax));
     const speedSeed = seededRandom(`${preset.id}-speed`);
-    const cycleDuration = 9.2 + speedSeed * 4.6;
+    const cycleDuration = (9.2 + speedSeed * 4.6) * RADAR_SPEED_FACTOR;
     const phaseOffset = seededRandom(`${preset.id}-phase`) * cycleDuration;
     const activeDuration = cycleDuration * (0.82 + seededRandom(`${preset.id}-active`) * 0.08);
 
@@ -781,110 +837,48 @@ function FullscreenTypographyBackdrop({ presets }: FullscreenTypographyBackdropP
     ),
     `olein@metrics:~$ render --graph-lines ${curves.length}`
   ];
-  const terminalLineY = [60, 88, 122, 152, 182, 212, 242, 286];
   const charsPerSec = 28;
-  const lineGapSec = 0.4;
-  const lineStartTimes = terminalLines.reduce<number[]>((acc, line, index) => {
+  const lineGapSec = 0.32;
+  const commandFontSize = width < 760 ? 18 : 25;
+  const commandLineHeight = Math.round(commandFontSize * 1.45);
+  const commandStartX = 0;
+  const commandStartY = commandFontSize;
+  const commandLines = terminalLines;
+  const lineStartTimes = commandLines.reduce<number[]>((acc, line, index) => {
     if (index === 0) {
       acc.push(0);
       return acc;
     }
-    const prevStart = acc[index - 1];
-    const prevLine = terminalLines[index - 1];
+    const prevStart = acc[index - 1] ?? 0;
+    const prevLine = commandLines[index - 1] ?? '';
     acc.push(prevStart + prevLine.length / charsPerSec + lineGapSec);
     return acc;
   }, []);
-  const lineDurations = terminalLines.map((line) => line.length / charsPerSec);
-  const terminalTypingDuration = lineStartTimes[lineStartTimes.length - 1] + terminalLines[terminalLines.length - 1].length / charsPerSec;
-  const terminalIntroDuration = 0.36;
-  const terminalHoldDuration = 1.05;
-  const terminalOutroDuration = 0.32;
-  const terminalPauseDuration = 0.18;
-  const terminalCycleDuration = terminalIntroDuration + terminalTypingDuration + terminalHoldDuration + terminalOutroDuration + terminalPauseDuration;
-  const terminalCycleIndex = Math.floor(scanTime / terminalCycleDuration);
-  const terminalCycleSec = scanTime % terminalCycleDuration;
-  const isTypingPhase = terminalCycleSec >= terminalIntroDuration && terminalCycleSec < terminalIntroDuration + terminalTypingDuration;
-  const typingElapsed = isTypingPhase ? terminalCycleSec - terminalIntroDuration : terminalCycleSec < terminalIntroDuration ? 0 : terminalTypingDuration;
-  const isHoldPhase =
-    terminalCycleSec >= terminalIntroDuration + terminalTypingDuration &&
-    terminalCycleSec < terminalIntroDuration + terminalTypingDuration + terminalHoldDuration;
-  const terminalTransform = (() => {
-    if (terminalCycleSec < terminalIntroDuration) {
-      const t = terminalCycleSec / terminalIntroDuration;
-      const split = 0.68;
-      if (t < split) {
-        const xProgress = t / split;
-        return {
-          scaleX: 0.04 + 0.96 * easeOutCubic(xProgress),
-          scaleY: 0.02
-        };
-      }
-      const yProgress = (t - split) / (1 - split);
-      return {
-        scaleX: 1,
-        scaleY: 0.02 + 0.98 * easeOutCubic(yProgress)
-      };
-    }
-
-    if (terminalCycleSec < terminalIntroDuration + terminalTypingDuration) {
-      return { scaleX: 1, scaleY: 1 };
-    }
-
-    if (terminalCycleSec < terminalIntroDuration + terminalTypingDuration + terminalHoldDuration) {
-      return { scaleX: 1, scaleY: 1 };
-    }
-
-    if (terminalCycleSec < terminalIntroDuration + terminalTypingDuration + terminalHoldDuration + terminalOutroDuration) {
-      const t = (terminalCycleSec - terminalIntroDuration - terminalTypingDuration - terminalHoldDuration) / terminalOutroDuration;
-      const split = 0.45;
-      if (t < split) {
-        const yProgress = t / split;
-        return {
-          scaleX: 1,
-          scaleY: 1 - 0.98 * easeInCubic(yProgress)
-        };
-      }
-      const xProgress = (t - split) / (1 - split);
-      return {
-        scaleX: 1 - 0.98 * easeInCubic(xProgress),
-        scaleY: 0.02
-      };
-    }
-
-    return { scaleX: 0.04, scaleY: 0.02 };
-  })();
-  const terminalVisible = terminalCycleSec < terminalIntroDuration + terminalTypingDuration + terminalHoldDuration + terminalOutroDuration;
-  const panelAnchorPositions = hasWideLayout
-    ? [
-        { x: Math.max(20, width * 0.56), y: 28 },
-        { x: Math.max(20, width - panelWidth - 28), y: 86 },
-        { x: Math.max(20, width * 0.52), y: Math.max(28, Math.min(height - panelHeight - 32, height * 0.2)) }
-      ]
-    : [
-        { x: 20, y: 20 },
-        { x: Math.max(20, width - panelWidth - 20), y: Math.max(20, height * 0.18) },
-        { x: 20, y: Math.max(20, height - panelHeight - 24) }
-      ];
-  const panelAnchor = panelAnchorPositions[terminalCycleIndex % panelAnchorPositions.length];
-  const panelX = panelAnchor.x;
-  const panelY = panelAnchor.y;
-  const typedTerminalLines = terminalLines.map((line, index) => getTypedSlice(line, typingElapsed, lineStartTimes[index], charsPerSec));
-  const activeLineIndex = (() => {
-    for (let i = 0; i < terminalLines.length; i += 1) {
-      if (typingElapsed >= lineStartTimes[i] && typingElapsed < lineStartTimes[i] + lineDurations[i]) {
-        return i;
-      }
-    }
-    return -1;
-  })();
-  const cursorLineIndex = activeLineIndex === -1 ? terminalLines.length - 1 : activeLineIndex;
-  const cursorLineY = terminalLineY[cursorLineIndex] ?? 286;
-  const cursorFontSize = cursorLineIndex === 0 ? 17 : cursorLineIndex === terminalLines.length - 1 ? 16 : 15;
-  const cursorX = 16 + measureTerminalTextWidth(typedTerminalLines[cursorLineIndex] ?? '', cursorFontSize);
-  const showCursor = (isTypingPhase || isHoldPhase) && activeLineIndex !== -1;
+  const terminalTypingDuration = (lineStartTimes[lineStartTimes.length - 1] ?? 0) + (commandLines[commandLines.length - 1]?.length ?? 0) / charsPerSec;
+  const typingLeadInSec = 0.24;
+  const typingHoldSec = 0.56;
+  const typingFadeOutSec = 0.72;
+  const typingRestartPauseSec = 0.24;
+  const typingCycleDuration = typingLeadInSec + terminalTypingDuration + typingHoldSec + typingFadeOutSec + typingRestartPauseSec;
+  const typingCycleSec = Number.isFinite(scanTime) ? scanTime % typingCycleDuration : 0;
+  const typingEndSec = typingLeadInSec + terminalTypingDuration;
+  const holdEndSec = typingEndSec + typingHoldSec;
+  const fadeEndSec = holdEndSec + typingFadeOutSec;
+  const typingElapsed =
+    typingCycleSec <= typingLeadInSec
+      ? 0
+      : typingCycleSec <= typingEndSec
+        ? typingCycleSec - typingLeadInSec
+        : typingCycleSec <= fadeEndSec
+          ? terminalTypingDuration
+          : 0;
+  const fadeProgress = typingCycleSec > holdEndSec && typingCycleSec <= fadeEndSec ? (typingCycleSec - holdEndSec) / typingFadeOutSec : 0;
+  const inLeadOrRestartGap = typingCycleSec <= typingLeadInSec || typingCycleSec > fadeEndSec;
+  const commandBlockOpacity = inLeadOrRestartGap ? 0 : 0.38 * (1 - Math.max(0, Math.min(1, fadeProgress)));
+  const typedCommandLines = commandLines.map((line, index) => getTypedSlice(line, typingElapsed, lineStartTimes[index] ?? 0, charsPerSec));
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+    <div className="pointer-events-none fixed inset-0 z-[1] overflow-hidden">
       <div className="absolute left-[-12rem] top-[-8rem] h-[28rem] w-[28rem] rounded-full bg-cyan-300/18 blur-3xl dark:bg-cyan-300/8" />
       <div className="absolute bottom-[-14rem] right-[-10rem] h-[34rem] w-[34rem] rounded-full bg-amber-300/24 blur-3xl dark:bg-amber-300/12" />
 
@@ -908,10 +902,32 @@ function FullscreenTypographyBackdrop({ presets }: FullscreenTypographyBackdropP
             <feGaussianBlur in="SourceGraphic" stdDeviation="0.45" result="blurred" />
             <feDropShadow in="blurred" dx="0" dy="0" stdDeviation="2.4" floodColor="rgb(120 255 160 / 0.95)" />
           </filter>
+          <filter id="hero-terminal-fog" x="-10%" y="-10%" width="120%" height="120%">
+            <feGaussianBlur stdDeviation="0.95" />
+          </filter>
         </defs>
 
         <rect x="0" y="0" width={width} height={height} fill="url(#hero-grid-glow)" />
         <rect x="0" y="0" width={width} height={height} fill="url(#hero-grid)" />
+        <g filter="url(#hero-terminal-fog)">
+          <text
+            x={commandStartX}
+            y={commandStartY}
+            fill="rgb(174 215 239 / 0.36)"
+            fontSize={commandFontSize}
+            letterSpacing="0.18"
+            style={{
+              opacity: commandBlockOpacity,
+              fontFamily: "'IBM Plex Mono', 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace"
+            }}
+          >
+            {typedCommandLines.map((line, index) => (
+              <tspan key={`bg-terminal-line-${index}`} x={commandStartX} dy={index === 0 ? 0 : commandLineHeight}>
+                {line}
+              </tspan>
+            ))}
+          </text>
+        </g>
 
         {curves.map((curve, index) => (
           <g key={curve.id}>
@@ -1038,8 +1054,8 @@ function FullscreenTypographyBackdrop({ presets }: FullscreenTypographyBackdropP
                 strokeWidth="1.2"
                 filter="url(#hero-radar-neon)"
               >
-                <animate attributeName="r" values="1;34" dur="1.9s" repeatCount="indefinite" />
-                <animate attributeName="opacity" values="0.88;0" dur="1.9s" repeatCount="indefinite" />
+                <animate attributeName="r" values="1;34" dur="3.1s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.88;0" dur="3.1s" repeatCount="indefinite" />
               </circle>
               <circle
                 cx={point.x}
@@ -1050,8 +1066,8 @@ function FullscreenTypographyBackdrop({ presets }: FullscreenTypographyBackdropP
                 strokeWidth="1"
                 filter="url(#hero-radar-neon)"
               >
-                <animate attributeName="r" values="1;28" dur="1.9s" begin="0.55s" repeatCount="indefinite" />
-                <animate attributeName="opacity" values="0.7;0" dur="1.9s" begin="0.55s" repeatCount="indefinite" />
+                <animate attributeName="r" values="1;28" dur="3.1s" begin="0.9s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.7;0" dur="3.1s" begin="0.9s" repeatCount="indefinite" />
               </circle>
               <circle cx={point.x} cy={point.y} r="6.5" fill="rgb(137 255 177 / 0.98)" filter="url(#hero-radar-neon)" />
               <text
@@ -1072,77 +1088,6 @@ function FullscreenTypographyBackdrop({ presets }: FullscreenTypographyBackdropP
           );
         })}
 
-        <g transform={`translate(${panelX} ${panelY}) scale(${panelScale})`}>
-          <g
-            transform={`translate(306 157) scale(${terminalTransform.scaleX} ${terminalTransform.scaleY}) translate(-306 -157)`}
-            style={{ opacity: terminalVisible ? 1 : 0 }}
-          >
-            <rect x="0" y="0" width="612" height="314" rx="2" fill="rgb(6 16 28 / 0.44)" stroke="rgb(142 201 234 / 0.26)" strokeWidth="1.2" />
-            <rect x="0" y="0" width="612" height="314" rx="2" fill="url(#hero-grid)" opacity="0.16" />
-            <text
-              x="16"
-              y="26"
-              fill="rgb(146 211 243 / 0.42)"
-              fontSize="15"
-              letterSpacing="2.2"
-              filter="url(#hero-neon)"
-              className="type-terminal-title"
-              style={{ fontFamily: "'IBM Plex Mono', 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace" }}
-            >
-              TYPO METRICS FIELD
-            </text>
-
-            <text
-              x="16"
-              y="60"
-              fill="rgb(132 208 246 / 0.66)"
-              fontSize="17"
-              filter="url(#hero-neon)"
-              className="type-terminal-line"
-              style={{ fontFamily: "'IBM Plex Mono', 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace" }}
-            >
-              {typedTerminalLines[0]}
-            </text>
-
-            <text
-              x="16"
-              y="88"
-              fill="rgb(158 224 255 / 0.5)"
-              fontSize="15"
-              className="type-terminal-line"
-              style={{ fontFamily: "'IBM Plex Mono', 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace" }}
-            >
-              {typedTerminalLines[1]}
-            </text>
-
-            {typedTerminalLines.slice(2, 7).map((line, index) => (
-              <text
-                key={`terminal-line-${index}`}
-                x="16"
-                y={122 + index * 30}
-                fill="rgb(187 230 252 / 0.54)"
-                fontSize="15"
-                className="type-terminal-line"
-                style={{ fontFamily: "'IBM Plex Mono', 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace" }}
-              >
-                {line}
-              </text>
-            ))}
-
-            <text
-              x="16"
-              y="286"
-              fill="rgb(132 208 246 / 0.62)"
-              fontSize="16"
-              filter="url(#hero-neon)"
-              className="type-terminal-line"
-              style={{ fontFamily: "'IBM Plex Mono', 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace" }}
-            >
-              {typedTerminalLines[7] ?? ''}
-            </text>
-            {showCursor && <rect x={cursorX} y={cursorLineY - 13} width="10" height="15" rx="1" fill="rgb(150 221 255 / 0.72)" className="type-terminal-cursor" />}
-          </g>
-        </g>
       </svg>
     </div>
   );
