@@ -2,6 +2,8 @@ import { AlertTriangle, Copy, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { z } from 'zod';
+import { Seo } from '../seo/Seo';
+import { PAGE_SEO } from '../seo/meta';
 
 const STORAGE_KEY = 'olein-tools:fluid-typography:v2';
 const DEFAULT_VAR_SLUG = 'fluid-type';
@@ -490,8 +492,10 @@ export function FluidTypographyPage() {
   };
 
   return (
-    <main className="relative">
-      <FullscreenTypographyBackdrop presets={validPresets} />
+    <>
+      <Seo meta={PAGE_SEO.fluidTypography} />
+      <main className="relative">
+        <FullscreenTypographyBackdrop presets={validPresets} />
 
       <div className="relative z-20 mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 pb-8 pt-24 sm:px-6 sm:pb-12 sm:pt-28">
         <header className="space-y-3">
@@ -648,7 +652,8 @@ export function FluidTypographyPage() {
           </div>
         </section>
       </div>
-    </main>
+      </main>
+    </>
   );
 }
 
