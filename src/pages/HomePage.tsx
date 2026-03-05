@@ -4,6 +4,11 @@ import { PAGE_SEO } from '../seo/meta';
 
 const tools = [
   {
+    id: 'integrity-plus-converter',
+    name: 'Integrity Plus Converter',
+    description: 'Convert Integrity Plus XML/CSV output into TSV for Google Sheets'
+  },
+  {
     id: 'fluid-typography',
     name: 'Fluid Typography (clamp) Calculator',
     description: 'Generate clamp() CSS from min/max font sizes and viewport widths'

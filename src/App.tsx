@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { HomePage } from './pages/HomePage';
 import { FluidTypographyPage } from './pages/FluidTypographyPage';
+import { IntegrityPlusConverterPage } from './pages/IntegrityPlusConverterPage';
 
 export function App() {
   useEffect(() => {
@@ -18,6 +19,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/fluid-typography" element={<FluidTypographyPage />} />
+          <Route path="/integrity-plus-converter" element={<IntegrityPlusConverterPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>

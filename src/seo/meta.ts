@@ -27,5 +27,11 @@ export const PAGE_SEO = {
     description:
       '最小・最大フォントサイズとビューポート幅から clamp() を生成できる Fluid Typography 計算ツール。',
     path: '/fluid-typography'
+  },
+  integrityPlusConverter: {
+    title: 'Integrity Plus Converter',
+    description:
+      'Integrity Plus の XML / CSV テキストを、Googleスプレッドシート貼り付け向けの TSV へ変換するツール。',
+    path: '/integrity-plus-converter'
   }
 } satisfies Record<string, PageSeo>;
