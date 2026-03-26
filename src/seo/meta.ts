@@ -39,5 +39,11 @@ export const PAGE_SEO = {
     description:
       'Before / After のスクリーンショットをブラウザ内で比較し、After画像上に差分ハイライトを重ねて確認できるツール。',
     path: '/visual-regression'
+  },
+  pomodoroTimer: {
+    title: 'ポモドーロタイマー',
+    description:
+      '作業時間と休憩時間、繰り返し回数を設定し、自動切り替えと通知音で集中サイクルを管理できるブラウザ向けポモドーロタイマー。',
+    path: '/pomodoro-timer'
   }
 } satisfies Record<string, PageSeo>;

@@ -7,6 +7,7 @@
 
 - Fluid Typography の `clamp()` 生成
 - Before / After スクリーンショットの差分比較
+- ポモドーロタイマーの実行、休憩自動切り替え、通知音
 - 複数プリセットの同時管理と一括出力
 - 生成した CSS 変数のクリップボードコピー
 - 入力値バリデーション（`zod`）
@@ -17,6 +18,7 @@
 
 - `/` : ツール一覧ページ
 - `/fluid-typography` : Fluid Typography 計算ページ
+- `/pomodoro-timer` : ポモドーロタイマーページ
 - `/visual-regression` : 簡易ビジュアルリグレッションテストページ
 
 ## 技術スタック
@@ -73,6 +75,7 @@ SEO の canonical / OGP の絶対 URL を安定させる場合は、以下を設
 │   │   ├── HomePage.tsx
 │   │   ├── FluidTypographyPage.tsx
 │   │   ├── IntegrityPlusConverterPage.tsx
+│   │   ├── PomodoroTimerPage.tsx
 │   │   └── VisualRegressionPage.tsx
 │   ├── seo/
 │   │   ├── Seo.tsx

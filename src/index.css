@@ -155,6 +155,17 @@ body::after {
   }
 }
 
+@keyframes pomodoroSweep {
+  from {
+    transform: rotate(0deg);
+    transform-origin: 160px 160px;
+  }
+  to {
+    transform: rotate(360deg);
+    transform-origin: 160px 160px;
+  }
+}
+
 .type-graph-pulse {
   animation: typeGraphPulse 4.2s ease-in-out infinite;
 }
@@ -192,6 +203,11 @@ body::after {
 
 .type-radar-label {
   animation: typeRadarLabel 4.6s ease-in-out infinite;
+}
+
+.pomodoro-sweep {
+  animation: pomodoroSweep linear infinite;
+  transform-origin: 160px 160px;
 }
 
 @layer components {

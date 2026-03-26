@@ -4,6 +4,11 @@ import { PAGE_SEO } from '../seo/meta';
 
 const tools = [
   {
+    id: 'pomodoro-timer',
+    name: 'ポモドーロタイマー',
+    description: '作業時間・休憩時間・繰り返し回数を設定し、自動遷移と通知音付きで集中サイクルを回せるタイマー'
+  },
+  {
     id: 'visual-regression',
     name: '簡易ビジュアルリグレッションテスト',
     description: 'Before / After のスクリーンショット差分をブラウザ内で比較し、After画像上にハイライト表示'
