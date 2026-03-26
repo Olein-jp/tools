@@ -9,11 +9,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    env:
-      DEPLOY_HOST: ${{ secrets.XSERVER_HOST }}
-      DEPLOY_PORT: ${{ secrets.XSERVER_PORT }}
-      DEPLOY_USER: ${{ secrets.XSERVER_USERNAME }}
-      DEPLOY_PATH: ${{ secrets.XSERVER_DEPLOY_PATH }}
 
     steps:
       - name: Checkout
@@ -36,29 +31,16 @@ jobs:
           echo "run_id=${GITHUB_RUN_ID}" > dist/__deploy_check.txt
           echo "sha=${GITHUB_SHA}" >> dist/__deploy_check.txt
           date -u +"built_at_utc=%Y-%m-%dT%H:%M:%SZ" >> dist/__deploy_check.txt
+          ls -la dist
 
-      - name: Setup SSH key
-        run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          printf '%s\n' "${{ secrets.XSERVER_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-
-      - name: Add known_hosts
-        run: |
-          ssh-keyscan -p "${DEPLOY_PORT}" -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
-
-      - name: Verify remote directory
-        run: |
-          ssh -i ~/.ssh/id_ed25519 -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" "mkdir -p '${DEPLOY_PATH}'"
-
-      - name: Deploy via rsync over SSH
-        run: |
-          rsync -avz --delete \
-            --exclude '.htaccess' \
-            --exclude '.git/' \
-            --exclude '.github/' \
-            --exclude '*.map' \
-            -e "ssh -i ~/.ssh/id_ed25519 -p ${DEPLOY_PORT}" \
-            dist/ "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          port: 21
+          server-dir: ${{ secrets.FTP_SERVER_DIR }}
+          local-dir: ./dist/
+          log-level: verbose
