@@ -33,5 +33,11 @@ export const PAGE_SEO = {
     description:
       'Integrity Plus の XML / CSV テキストを、Googleスプレッドシート貼り付け向けの TSV へ変換するツール。',
     path: '/integrity-plus-converter'
+  },
+  visualRegression: {
+    title: '簡易ビジュアルリグレッションテスト',
+    description:
+      'Before / After のスクリーンショットをブラウザ内で比較し、After画像上に差分ハイライトを重ねて確認できるツール。',
+    path: '/visual-regression'
   }
 } satisfies Record<string, PageSeo>;

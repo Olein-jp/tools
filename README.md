@@ -1,11 +1,12 @@
 # OLEIN Tools Hub
 
 `OLEIN Tools Hub` は、デザイン・開発向けの小さなユーティリティをまとめた Web アプリです。
-現在の MVP では、`Fluid Typography (clamp) Calculator` を提供しています。
+現在は、複数の制作・実装補助ツールを提供しています。
 
 ## 主な機能
 
 - Fluid Typography の `clamp()` 生成
+- Before / After スクリーンショットの差分比較
 - 複数プリセットの同時管理と一括出力
 - 生成した CSS 変数のクリップボードコピー
 - 入力値バリデーション（`zod`）
@@ -16,6 +17,7 @@
 
 - `/` : ツール一覧ページ
 - `/fluid-typography` : Fluid Typography 計算ページ
+- `/visual-regression` : 簡易ビジュアルリグレッションテストページ
 
 ## 技術スタック
 
@@ -25,6 +27,7 @@
 - React Router 6
 - Tailwind CSS 3
 - zod
+- pixelmatch
 
 ## セットアップ
 
@@ -68,7 +71,9 @@ SEO の canonical / OGP の絶対 URL を安定させる場合は、以下を設
 ├── src/
 │   ├── pages/
 │   │   ├── HomePage.tsx
-│   │   └── FluidTypographyPage.tsx
+│   │   ├── FluidTypographyPage.tsx
+│   │   ├── IntegrityPlusConverterPage.tsx
+│   │   └── VisualRegressionPage.tsx
 │   ├── seo/
 │   │   ├── Seo.tsx
 │   │   └── meta.ts
@@ -82,7 +87,7 @@ SEO の canonical / OGP の絶対 URL を安定させる場合は、以下を設
 
 ## 補足
 
-このリポジトリはツールハブ形式のため、今後 `src/pages/` に新しいツールページを追加し、`src/pages/HomePage.tsx` のツール一覧へ登録することで拡張できます。
+このリポジトリはツールハブ形式のため、今後 `src/pages/` に新しいツールページを追加し、`src/pages/HomePage.tsx` と `src/App.tsx` に登録することで拡張できます。
 
 ## 今後追加予定のツールアイデア
 
